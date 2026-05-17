@@ -107,12 +107,6 @@ def safe_float(val, default=0.0):
 
 @app.route('/predict', methods=['GET'])
 def predict_aqi():
-    date_str = request.args.get('date')
-    if not date_str:
-        return jsonify({'error': 'Please provide a date (YYYY-MM-DD)'}), 400
-    
-@app.route('/predict', methods=['GET'])
-def predict_aqi():
     import traceback
     try:
         date_str = request.args.get('date')
