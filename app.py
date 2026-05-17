@@ -11,6 +11,10 @@ def asymmetric_loss(y_true, y_pred):
     hess = np.where(residual > 0, 2.0, 1.0)
     return grad, hess
 
+# CRITICAL FIX: Inject function into __main__ so joblib can unpickle the model under gunicorn
+import sys
+sys.modules['__main__'].asymmetric_loss = asymmetric_loss
+
 app = Flask(__name__)
 CORS(app)
 
