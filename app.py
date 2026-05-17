@@ -23,6 +23,15 @@ MODEL_DIR = "aqi_model_saved"
 try:
     stage1_regressor = joblib.load(os.path.join(MODEL_DIR, "stage1_regressor.pkl"))
     stage2_calibrated = joblib.load(os.path.join(MODEL_DIR, "stage2_calibrated.pkl"))
+    
+    # CRITICAL backward-compatibility patch for scikit-learn 1.3+ (Render environment)
+    if not hasattr(stage2_calibrated, 'estimator') and hasattr(stage2_calibrated, 'base_estimator'):
+        stage2_calibrated.estimator = stage2_calibrated.base_estimator
+    if hasattr(stage2_calibrated, 'calibrated_classifiers_'):
+        for sub_clf in stage2_calibrated.calibrated_classifiers_:
+            if not hasattr(sub_clf, 'estimator') and hasattr(sub_clf, 'base_estimator'):
+                sub_clf.estimator = sub_clf.base_estimator
+
     thresholds = joblib.load(os.path.join(MODEL_DIR, "thresholds.pkl"))
     features = joblib.load(os.path.join(MODEL_DIR, "feature_columns.pkl"))
     print("Models loaded successfully.")
