@@ -105,12 +105,68 @@ def predict_aqi():
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
+    is_future = False
     row = df[df['Date'] == target_date]
+    
     if row.empty:
-        return jsonify({'error': f'No historical feature data found for {date_str}. Try a date between 2017 and 2025.'}), 404
-
-    # Extract features for Stage 1
-    X_input = row[features].copy()
+        is_future = True
+        target_month = target_date.month
+        target_day = target_date.day
+        
+        # Find matching historical dates (same month and day)
+        historical_rows = df[(df['Date'].dt.month == target_month) & (df['Date'].dt.day == target_day)]
+        if historical_rows.empty:
+            historical_rows = df[df['Date'].dt.month == target_month]
+        if historical_rows.empty:
+            historical_rows = df
+            
+        # Synthesize features based on average historical values for this specific day of the year
+        X_input = historical_rows[features].mean().to_frame().T
+        
+        weather_data = {
+            'temp': float(historical_rows['temp'].mean()) if 'temp' in df else 25.0,
+            'humidity': float(historical_rows['humidity'].mean()) if 'humidity' in df else 50.0,
+            'precip': float(historical_rows['precip'].mean()) if 'precip' in df else 0.0,
+            'windspeed': float(historical_rows['windspeed'].mean()) if 'windspeed' in df else 10.0,
+            'sealevelpressure': float(historical_rows['sealevelpressure'].mean()) if 'sealevelpressure' in df else 1010.0,
+        }
+        actual_aqi = None
+        
+        # Generate trend context based on historical preceding days
+        trend = []
+        for offset in range(7, 0, -1):
+            prev_date = target_date - pd.Timedelta(days=offset)
+            p_month = prev_date.month
+            p_day = prev_date.day
+            p_hist = df[(df['Date'].dt.month == p_month) & (df['Date'].dt.day == p_day)]
+            if p_hist.empty:
+                p_hist = df[df['Date'].dt.month == p_month]
+            
+            p_aqi = float(p_hist['AQI'].mean()) if not p_hist.empty else 150.0
+            trend.append({
+                'date': prev_date.strftime('%Y-%m-%d'),
+                'aqi': round(p_aqi, 2)
+            })
+    else:
+        # Extract features for Stage 1
+        X_input = row[features].copy()
+        weather_data = {
+            'temp': float(row['temp'].values[0]) if 'temp' in row else None,
+            'humidity': float(row['humidity'].values[0]) if 'humidity' in row else None,
+            'precip': float(row['precip'].values[0]) if 'precip' in row else None,
+            'windspeed': float(row['windspeed'].values[0]) if 'windspeed' in row else None,
+            'sealevelpressure': float(row['sealevelpressure'].values[0]) if 'sealevelpressure' in row else None,
+        }
+        actual_aqi = float(row['AQI'].values[0]) if 'AQI' in row else None
+        
+        # Grab previous 7 days of actual AQI for historical trend comparison
+        prev_7_days = df[df['Date'] < target_date].tail(7)
+        trend = []
+        for _, r in prev_7_days.iterrows():
+            trend.append({
+                'date': r['Date'].strftime('%Y-%m-%d'),
+                'aqi': float(r['AQI'])
+            })
 
     # Predict Stage 1 (Regression)
     pred_log = stage1_regressor.predict(X_input)
@@ -127,16 +183,6 @@ def predict_aqi():
     pred_cat_idx = apply_per_boundary_thresholds(probs, thresholds)[0]
     
     category = label_names[pred_cat_idx]
-    
-    # Grab previous 7 days of actual AQI for historical trend comparison
-    prev_7_days = df[df['Date'] < target_date].tail(7)
-    trend = []
-    for _, r in prev_7_days.iterrows():
-        trend.append({
-            'date': r['Date'].strftime('%Y-%m-%d'),
-            'aqi': float(r['AQI']),
-            'category': label_names[get_cat(r['AQI'])] if 'get_cat' in globals() or 'get_cat' in locals() else "Unknown"
-        })
 
     # Let's ensure get_cat is defined or fallback
     def local_get_cat(aqi):
@@ -156,15 +202,11 @@ def predict_aqi():
         'predicted_aqi': round(pred_aqi, 2),
         'category': category,
         'color': category_colors.get(category, "#000000"),
-        'actual_aqi': float(row['AQI'].values[0]) if 'AQI' in row else None,
-        'weather': {
-            'temp': float(row['temp'].values[0]) if 'temp' in row else None,
-            'humidity': float(row['humidity'].values[0]) if 'humidity' in row else None,
-            'precip': float(row['precip'].values[0]) if 'precip' in row else None,
-            'windspeed': float(row['windspeed'].values[0]) if 'windspeed' in row else None,
-            'sealevelpressure': float(row['sealevelpressure'].values[0]) if 'sealevelpressure' in row else None,
-        },
-        'trend': trend
+        'actual_aqi': actual_aqi,
+        'weather': weather_data,
+        'trend': trend,
+        'is_future': is_future,
+        'prediction_type': 'Seasonal Climatology Synthesis' if is_future else 'Historical Baseline'
     })
 
 if __name__ == '__main__':

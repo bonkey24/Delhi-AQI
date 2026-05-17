@@ -291,10 +291,16 @@ function App() {
                     <div className="metric-aqi-label">Predict AQI</div>
                   </div>
                 </div>
-                {result.actual_aqi && (
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    Actual Recorded AQI: <span style={{ color: '#1e293b', fontWeight: 800 }}>{result.actual_aqi}</span>
+                {result.is_future ? (
+                  <div style={{ marginTop: '0.5rem', color: '#4f46e5', fontSize: '0.75rem', fontWeight: 800, backgroundColor: '#f5f3ff', padding: '0.3rem 0.75rem', borderRadius: '9999px', border: '1px solid rgba(79, 70, 229, 0.15)', display: 'inline-block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    🔮 Climatology Simulation
                   </div>
+                ) : (
+                  result.actual_aqi && (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      Actual Recorded AQI: <span style={{ color: '#1e293b', fontWeight: 800 }}>{result.actual_aqi}</span>
+                    </div>
+                  )
                 )}
               </div>
 
