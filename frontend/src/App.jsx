@@ -215,7 +215,6 @@ function App() {
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 min="2017-01-08"
-                max="2025-12-31"
               />
             </div>
             <button type="submit" className="btn-predict" disabled={loading}>
@@ -267,7 +266,7 @@ function App() {
           <div className="empty-state">
             <div className="empty-state-icon">🔮</div>
             <h3>Predictive Analysis Ready</h3>
-            <p>Select any calendar date between 2017 and 2025 in the panel to generate advanced air quality telemetry.</p>
+            <p>Select any historical calendar date or simulate any future date in the panel to generate advanced air quality telemetry.</p>
           </div>
         )}
 
