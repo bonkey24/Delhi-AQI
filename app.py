@@ -85,6 +85,15 @@ def apply_per_boundary_thresholds(probs, thresholds):
         preds[mask] = np.where(rel > t, high, low)
     return preds
 
+@app.route('/')
+def home():
+    return jsonify({
+        'status': 'online',
+        'project': 'Delhi Air Quality Index Predictor API',
+        'architecture': 'Two-Stage Machine Learning Ensemble (LightGBM + XGBoost + Ridge)',
+        'usage': 'Query the model using /predict?date=YYYY-MM-DD (e.g. /predict?date=2024-05-17)'
+    })
+
 @app.route('/predict', methods=['GET'])
 def predict_aqi():
     date_str = request.args.get('date')
