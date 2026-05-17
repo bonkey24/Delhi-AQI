@@ -6,6 +6,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [activeDiagnosticsTab, setActiveDiagnosticsTab] = useState('features');
 
   const handlePredict = async (e) => {
     e.preventDefault();
@@ -191,6 +192,59 @@ function App() {
     );
   };
 
+  const renderNormalCurve = (res) => {
+    const pdf = res.stats.pdf;
+    if (!pdf || pdf.length === 0) return null;
+    
+    const minX = pdf[0].x;
+    const maxX = pdf[pdf.length - 1].x;
+    const maxY = Math.max(...pdf.map(p => p.y));
+    
+    const svgW = 320;
+    const svgH = 140;
+    const paddingLeft = 30;
+    const paddingRight = 10;
+    const paddingTop = 25;
+    const paddingBottom = 20;
+    
+    const points = pdf.map(p => {
+      const xRatio = (p.x - minX) / (maxX - minX);
+      const yRatio = p.y / maxY;
+      const svgX = paddingLeft + xRatio * (svgW - paddingLeft - paddingRight);
+      const svgY = svgH - paddingBottom - yRatio * (svgH - paddingTop - paddingBottom);
+      return `${svgX},${svgY}`;
+    });
+    
+    const pathData = `M ${points.join(' L ')}`;
+    const closedPathData = `${pathData} L ${svgW - paddingRight},${svgH - paddingBottom} L ${paddingLeft},${svgH - paddingBottom} Z`;
+    
+    const predRatio = (res.predicted_aqi - minX) / (maxX - minX);
+    const boundedRatio = Math.max(0, Math.min(1, predRatio));
+    const predSvgX = paddingLeft + boundedRatio * (svgW - paddingLeft - paddingRight);
+    
+    return (
+      <div className="normal-curve-svg-wrapper">
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} className="normal-curve-svg">
+          <defs>
+            <linearGradient id="pdfGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+          <line x1={paddingLeft} y1={svgH - paddingBottom} x2={svgW - paddingRight} y2={svgH - paddingBottom} stroke="var(--border-medium)" strokeWidth="1.5" />
+          <path d={closedPathData} fill="url(#pdfGrad)" />
+          <path d={pathData} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" />
+          <line x1={predSvgX} y1={5} x2={predSvgX} y2={svgH - paddingBottom} stroke="#be123c" strokeWidth="2" strokeDasharray="4 3" />
+          <circle cx={predSvgX} cy={5} r="3" fill="#be123c" />
+          <text x={predSvgX} y={15} fill="#be123c" fontSize="9" fontWeight="800" textAnchor={predSvgX > svgW / 2 ? 'end' : 'start'} dx={predSvgX > svgW / 2 ? -6 : 6}>Predicted ({res.predicted_aqi})</text>
+          <text x={paddingLeft} y={svgH - 5} fill="var(--text-muted)" fontSize="8" fontWeight="600" textAnchor="middle">{Math.round(minX)}</text>
+          <text x={svgW - paddingRight} y={svgH - 5} fill="var(--text-muted)" fontSize="8" fontWeight="600" textAnchor="middle">{Math.round(maxX)}</text>
+          <text x={(svgW - paddingLeft - paddingRight) / 2 + paddingLeft} y={svgH - 5} fill="var(--text-muted)" fontSize="8" fontWeight="700" textAnchor="middle">Mean ({Math.round(res.stats.mean)})</text>
+        </svg>
+      </div>
+    );
+  };
+
   const advice = result ? getHealthAdvice(result.category) : null;
 
   return (
@@ -238,11 +292,240 @@ function App() {
               <h4>Asymmetric Error Weights</h4>
               <p>Model is penalized 2x harder for dangerous under-prediction.</p>
             </div>
-          </div>
         </div>
       </div>
 
-      {/* Right Panel */}
+      <div className="card diagnostics-panel">
+        <div className="diagnostics-header">
+          <h3>🧠 AI DIAGNOSTICS & CALIBRATION</h3>
+          <div className="tab-buttons">
+            <button 
+              type="button"
+              className={`tab-btn ${activeDiagnosticsTab === 'features' ? 'active' : ''}`}
+              onClick={() => setActiveDiagnosticsTab('features')}
+            >
+              Drivers
+            </button>
+            <button 
+              type="button"
+              className={`tab-btn ${activeDiagnosticsTab === 'stats' ? 'active' : ''}`}
+              onClick={() => setActiveDiagnosticsTab('stats')}
+            >
+              Stats
+            </button>
+            <button 
+              type="button"
+              className={`tab-btn ${activeDiagnosticsTab === 'distribution' ? 'active' : ''}`}
+              onClick={() => setActiveDiagnosticsTab('distribution')}
+            >
+              Distribution
+            </button>
+          </div>
+        </div>
+
+        {activeDiagnosticsTab === 'features' && (
+          <div className="features-list">
+            <p className="tab-desc">Top 5 features driving the Two-Stage ML Ensemble:</p>
+            
+            <div className="feature-item">
+              <div className="feature-info">
+                <span className="feature-name">AQI Yesterday <code className="feature-code">AQI_lag_1</code></span>
+                <span className="feature-weight">32.40%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: '32.4%' }}></div>
+              </div>
+            </div>
+
+            <div className="feature-item">
+              <div className="feature-info">
+                <span className="feature-name">7-Day Exp Average <code className="feature-code">AQI_ewma_7</code></span>
+                <span className="feature-weight">27.31%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: '27.31%' }}></div>
+              </div>
+            </div>
+
+            <div className="feature-item">
+              <div className="feature-info">
+                <span className="feature-name">Seasonal Cosine Shift <code className="feature-code">Month_cos</code></span>
+                <span className="feature-weight">7.67%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: '7.67%' }}></div>
+              </div>
+            </div>
+
+            <div className="feature-item">
+              <div className="feature-info">
+                <span className="feature-name">Annual Cyclical Factor <code className="feature-code">DayOfYear_cos</code></span>
+                <span className="feature-weight">6.19%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: '6.19%' }}></div>
+              </div>
+            </div>
+
+            <div className="feature-item">
+              <div className="feature-info">
+                <span className="feature-name">7-Day Roll Mean <code className="feature-code">AQI_roll_mean_7</code></span>
+                <span className="feature-weight">3.34%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: '3.34%' }}></div>
+              </div>
+            </div>
+
+            <div className="calibration-table-container" style={{ marginTop: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
+              <p className="tab-desc" style={{ marginBottom: '0.6rem' }}>Model Classification Precision (Validation split):</p>
+              <table className="calibration-table">
+                <thead>
+                  <tr>
+                    <th>Alert Level</th>
+                    <th>Precision</th>
+                    <th>Recall</th>
+                    <th>F1-Score</th>
+                    <th>Support</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="cal-row satisfactory-row">
+                    <td><span className="cal-dot" style={{ backgroundColor: '#facc15' }}></span>Satisfactory</td>
+                    <td>0.00</td>
+                    <td>0.00</td>
+                    <td>0.00</td>
+                    <td>2</td>
+                  </tr>
+                  <tr className="cal-row moderate-row">
+                    <td><span className="cal-dot" style={{ backgroundColor: '#fb923c' }}></span>Moderate</td>
+                    <td>0.86</td>
+                    <td>0.81</td>
+                    <td>0.83</td>
+                    <td>53</td>
+                  </tr>
+                  <tr className="cal-row poor-row">
+                    <td><span className="cal-dot" style={{ backgroundColor: '#f87171' }}></span>Poor</td>
+                    <td>0.75</td>
+                    <td>0.79</td>
+                    <td>0.77</td>
+                    <td>56</td>
+                  </tr>
+                  <tr className="cal-row verypoor-row">
+                    <td><span className="cal-dot" style={{ backgroundColor: '#a855f7' }}></span>Very Poor</td>
+                    <td>0.73</td>
+                    <td>0.82</td>
+                    <td>0.77</td>
+                    <td>55</td>
+                  </tr>
+                  <tr className="cal-row severe-row">
+                    <td><span className="cal-dot" style={{ backgroundColor: '#881337' }}></span>Severe</td>
+                    <td>0.67</td>
+                    <td>0.43</td>
+                    <td>0.52</td>
+                    <td>14</td>
+                  </tr>
+                  <tr className="cal-row accuracy-row">
+                    <td><strong>Accuracy</strong></td>
+                    <td colSpan="2"></td>
+                    <td><strong>0.77</strong></td>
+                    <td>180</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeDiagnosticsTab === 'stats' && (
+          <div className="stats-tab-content">
+            {result && result.stats ? (
+              <>
+                <p className="tab-desc">Dynamic historical distributions calculated for <strong>{result.stats.month_name}</strong> in Delhi:</p>
+                <div className="stats-metrics-grid">
+                  <div className="stats-card">
+                    <span className="stats-card-label">Mean (Average)</span>
+                    <span className="stats-card-value">{result.stats.mean}</span>
+                  </div>
+                  <div className="stats-card">
+                    <span className="stats-card-label">Median (Middle)</span>
+                    <span className="stats-card-value">{result.stats.median}</span>
+                  </div>
+                  <div className="stats-card">
+                    <span className="stats-card-label">Mode (Common)</span>
+                    <span className="stats-card-value">{result.stats.mode}</span>
+                  </div>
+                  <div className="stats-card">
+                    <span className="stats-card-label">Std Deviation</span>
+                    <span className="stats-card-value">±{result.stats.std_dev}</span>
+                  </div>
+                  <div className="stats-card" style={{ gridColumn: 'span 2' }}>
+                    <span className="stats-card-label">Variance (Spread)</span>
+                    <span className="stats-card-value" style={{ fontSize: '1.15rem' }}>{result.stats.variance}</span>
+                  </div>
+                  <div className="stats-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 1.1rem' }}>
+                    <div>
+                      <span className="stats-card-label" style={{ marginBottom: '0.1rem' }}>Annual Linear Trend</span>
+                      <span className="trend-desc" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Multi-year slope of {result.stats.month_name} averages</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="stats-card-value" style={{ 
+                        fontSize: '1.05rem', 
+                        color: result.stats.trend_slope < 0 ? '#16a34a' : '#dc2626',
+                        fontWeight: 800
+                      }}>
+                        {result.stats.trend_slope > 0 ? `+${result.stats.trend_slope}` : result.stats.trend_slope} AQI/yr
+                      </span>
+                      <span style={{ 
+                        display: 'block', 
+                        fontSize: '0.65rem', 
+                        fontWeight: 700, 
+                        color: result.stats.trend_slope < 0 ? '#16a34a' : '#dc2626'
+                      }}>
+                        {result.stats.trend_slope < 0 ? '🟢 Improving Trend' : '🔴 Worsening Trend'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="stats-locked">
+                <span style={{ fontSize: '1.5rem', marginBottom: '0.5rem', display: 'block' }}>🔒</span>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Awaiting prediction date to analyze seasonal stats.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeDiagnosticsTab === 'distribution' && (
+          <div className="distribution-tab-content">
+            {result && result.stats && result.stats.pdf && result.stats.pdf.length > 0 ? (
+              <>
+                <p className="tab-desc">Normal Probability Distribution PDF of Delhi AQI in <strong>{result.stats.month_name}</strong>:</p>
+                {renderNormalCurve(result)}
+                <div className="distribution-legend" style={{ marginTop: '0.75rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <span className="legend-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    <span className="legend-line" style={{ display: 'inline-block', width: '12px', height: '3px', backgroundColor: 'var(--primary)', borderRadius: '2px' }}></span>
+                    Normal Curve
+                  </span>
+                  <span className="legend-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    <span className="legend-line" style={{ display: 'inline-block', width: '12px', height: '0px', borderTop: '2px dashed #be123c' }}></span>
+                    Predicted AQI ({result.predicted_aqi})
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="stats-locked">
+                <span style={{ fontSize: '1.5rem', marginBottom: '0.5rem', display: 'block' }}>🔒</span>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Awaiting prediction date to plot probability curve.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Right Panel */}
       <div className="right-panel">
         {loading && (
           <div className="card spinner-container">

@@ -210,6 +210,45 @@ def predict_aqi():
         
         category = label_names[pred_cat_idx]
 
+        # Dynamic statistical calculations for the target date's month (Seasonal Climatology Distribution)
+        target_month = target_date.month
+        month_data = df[df['Date'].dt.month == target_month]
+        if month_data.empty:
+            month_data = df
+            
+        aqi_values = month_data['AQI'].dropna()
+        if len(aqi_values) == 0:
+            aqi_values = df['AQI'].dropna()
+            
+        mean_val = float(aqi_values.mean())
+        median_val = float(aqi_values.median())
+        modes = aqi_values.mode()
+        mode_val = float(modes.values[0]) if not modes.empty else mean_val
+        var_val = float(aqi_values.var()) if len(aqi_values) > 1 else 0.0
+        std_val = float(aqi_values.std()) if len(aqi_values) > 1 else 0.0
+        
+        # Linear Regression: Calculate multi-year seasonal trend slope
+        yearly_means = month_data.groupby(month_data['Date'].dt.year)['AQI'].mean().dropna()
+        if len(yearly_means) > 1:
+            years = yearly_means.index.values.astype(float)
+            y_vals = yearly_means.values.astype(float)
+            slope, _ = np.polyfit(years, y_vals, 1)
+        else:
+            slope = 0.0
+            
+        # Normal Distribution PDF Coordinates Generation
+        pdf_points = []
+        if std_val > 0:
+            x_min = max(0.0, mean_val - 3 * std_val)
+            x_max = mean_val + 3 * std_val
+            x_range = np.linspace(x_min, x_max, 40)
+            for x in x_range:
+                y = (1.0 / (std_val * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mean_val) / std_val) ** 2)
+                pdf_points.append({
+                    'x': float(round(x, 1)),
+                    'y': float(y)
+                })
+
         # Let's ensure get_cat is defined or fallback
         def local_get_cat(aqi):
             if aqi <= 50:    return "Good"
@@ -232,7 +271,17 @@ def predict_aqi():
             'weather': weather_data,
             'trend': trend,
             'is_future': is_future,
-            'prediction_type': 'Seasonal Climatology Synthesis' if is_future else 'Historical Baseline'
+            'prediction_type': 'Seasonal Climatology Synthesis' if is_future else 'Historical Baseline',
+            'stats': {
+                'mean': round(mean_val, 2),
+                'median': round(median_val, 2),
+                'mode': round(mode_val, 2),
+                'variance': round(var_val, 2),
+                'std_dev': round(std_val, 2),
+                'trend_slope': round(slope, 4),
+                'month_name': target_date.strftime('%B'),
+                'pdf': pdf_points
+            }
         })
     except Exception as e:
         err_tb = traceback.format_exc()
