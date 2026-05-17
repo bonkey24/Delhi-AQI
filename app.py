@@ -94,6 +94,17 @@ def home():
         'usage': 'Query the model using /predict?date=YYYY-MM-DD (e.g. /predict?date=2024-05-17)'
     })
 
+def safe_float(val, default=0.0):
+    if pd.isna(val) or val is None:
+        return default
+    try:
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 @app.route('/predict', methods=['GET'])
 def predict_aqi():
     date_str = request.args.get('date')
@@ -122,13 +133,15 @@ def predict_aqi():
             
         # Synthesize features based on average historical values for this specific day of the year
         X_input = historical_rows[features].mean().to_frame().T
+        # Safeguard: fill any NaN features with global means to prevent model crashes or NaN outputs
+        X_input = X_input.fillna(df[features].mean()).fillna(0.0)
         
         weather_data = {
-            'temp': float(historical_rows['temp'].mean()) if 'temp' in df else 25.0,
-            'humidity': float(historical_rows['humidity'].mean()) if 'humidity' in df else 50.0,
-            'precip': float(historical_rows['precip'].mean()) if 'precip' in df else 0.0,
-            'windspeed': float(historical_rows['windspeed'].mean()) if 'windspeed' in df else 10.0,
-            'sealevelpressure': float(historical_rows['sealevelpressure'].mean()) if 'sealevelpressure' in df else 1010.0,
+            'temp': safe_float(historical_rows['temp'].mean(), 25.0) if 'temp' in df else 25.0,
+            'humidity': safe_float(historical_rows['humidity'].mean(), 50.0) if 'humidity' in df else 50.0,
+            'precip': safe_float(historical_rows['precip'].mean(), 0.0) if 'precip' in df else 0.0,
+            'windspeed': safe_float(historical_rows['windspeed'].mean(), 10.0) if 'windspeed' in df else 10.0,
+            'sealevelpressure': safe_float(historical_rows['sealevelpressure'].mean(), 1010.0) if 'sealevelpressure' in df else 1010.0,
         }
         actual_aqi = None
         
@@ -142,7 +155,7 @@ def predict_aqi():
             if p_hist.empty:
                 p_hist = df[df['Date'].dt.month == p_month]
             
-            p_aqi = float(p_hist['AQI'].mean()) if not p_hist.empty else 150.0
+            p_aqi = safe_float(p_hist['AQI'].mean(), 150.0) if not p_hist.empty else 150.0
             trend.append({
                 'date': prev_date.strftime('%Y-%m-%d'),
                 'aqi': round(p_aqi, 2)
@@ -150,14 +163,16 @@ def predict_aqi():
     else:
         # Extract features for Stage 1
         X_input = row[features].copy()
+        X_input = X_input.fillna(df[features].mean()).fillna(0.0)
+        
         weather_data = {
-            'temp': float(row['temp'].values[0]) if 'temp' in row else None,
-            'humidity': float(row['humidity'].values[0]) if 'humidity' in row else None,
-            'precip': float(row['precip'].values[0]) if 'precip' in row else None,
-            'windspeed': float(row['windspeed'].values[0]) if 'windspeed' in row else None,
-            'sealevelpressure': float(row['sealevelpressure'].values[0]) if 'sealevelpressure' in row else None,
+            'temp': safe_float(row['temp'].values[0], 25.0) if 'temp' in row else 25.0,
+            'humidity': safe_float(row['humidity'].values[0], 50.0) if 'humidity' in row else 50.0,
+            'precip': safe_float(row['precip'].values[0], 0.0) if 'precip' in row else 0.0,
+            'windspeed': safe_float(row['windspeed'].values[0], 10.0) if 'windspeed' in row else 10.0,
+            'sealevelpressure': safe_float(row['sealevelpressure'].values[0], 1010.0) if 'sealevelpressure' in row else 1010.0,
         }
-        actual_aqi = float(row['AQI'].values[0]) if 'AQI' in row else None
+        actual_aqi = safe_float(row['AQI'].values[0], None)
         
         # Grab previous 7 days of actual AQI for historical trend comparison
         prev_7_days = df[df['Date'] < target_date].tail(7)
@@ -165,7 +180,7 @@ def predict_aqi():
         for _, r in prev_7_days.iterrows():
             trend.append({
                 'date': r['Date'].strftime('%Y-%m-%d'),
-                'aqi': float(r['AQI'])
+                'aqi': safe_float(r['AQI'], 150.0)
             })
 
     # Predict Stage 1 (Regression)
